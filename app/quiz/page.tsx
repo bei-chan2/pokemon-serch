@@ -232,13 +232,53 @@ function PokemonDetail({
   );
 }
 
+// Module-level Japanese name index (loaded once, persists across modal opens)
+let jaIndexCache: Map<string, number> | null = null;
+let jaIndexPromise: Promise<Map<string, number>> | null = null;
+
+async function loadJaIndex(): Promise<Map<string, number>> {
+  if (jaIndexCache) return jaIndexCache;
+  if (!jaIndexPromise) {
+    jaIndexPromise = fetch('https://beta.pokeapi.co/graphql/v1beta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `{ pokemon_v2_pokemonspeciesname(where: {language_id: {_in: [1, 11]}}) { name pokemon_species_id } }`,
+      }),
+    })
+      .then((r) => r.json())
+      .then(({ data }) => {
+        const map = new Map<string, number>();
+        for (const e of data.pokemon_v2_pokemonspeciesname) {
+          map.set(e.name, e.pokemon_species_id);
+        }
+        jaIndexCache = map;
+        return map;
+      });
+  }
+  return jaIndexPromise;
+}
+
+function isJapanese(s: string) {
+  return /[぀-ヿ一-鿿]/.test(s);
+}
+
 function SearchModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<PokemonData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [indexReady, setIndexReady] = useState(!!jaIndexCache);
   const jaCache = useRef<Map<number, { abilities: string[]; moves: string[] }>>(new Map());
   const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    if (!jaIndexCache) {
+      loadJaIndex()
+        .then(() => setIndexReady(true))
+        .catch(() => setIndexReady(true));
+    }
+  }, []);
 
   const handleJaLoaded = useCallback((id: number, abilities: string[], moves: string[]) => {
     jaCache.current.set(id, { abilities, moves });
@@ -246,20 +286,34 @@ function SearchModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   const handleSearch = async () => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return;
     setLoading(true);
     setError('');
     setResult(null);
     jaCache.current.clear();
     try {
-      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${q}`);
-      if (!res.ok) throw new Error();
+      let pokemonId: number | string;
+      const numId = Number(q);
+
+      if (!isNaN(numId) && q === String(numId)) {
+        pokemonId = numId;
+      } else if (isJapanese(q)) {
+        const index = await loadJaIndex();
+        const id = index.get(q) ?? [...index.entries()].find(([name]) => name.startsWith(q))?.[1];
+        if (!id) throw new Error('not found');
+        pokemonId = id;
+      } else {
+        pokemonId = q.toLowerCase();
+      }
+
+      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemonId}`);
+      if (!res.ok) throw new Error('not found');
       const poke = await res.json();
       const data = await fetchPokemonData(poke.id);
       setResult(data);
     } catch {
-      setError('みつかりませんでした。番号か英語名で入力してください。');
+      setError('みつかりませんでした。名前や番号を確認してください。');
     } finally {
       setLoading(false);
     }
@@ -286,7 +340,7 @@ function SearchModal({ onClose }: { onClose: () => void }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="番号 or 英語名 (例: 25, pikachu)"
+            placeholder="ピカチュウ / pikachu / 25"
             autoFocus
             className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400 transition-colors"
           />
@@ -298,7 +352,10 @@ function SearchModal({ onClose }: { onClose: () => void }) {
             けんさく
           </button>
         </div>
-        <p className="text-gray-500 text-xs mb-5 pl-1">英語名または図鑑番号で検索できます</p>
+        <p className="text-gray-500 text-xs mb-5 pl-1 flex items-center gap-1.5">
+          日本語名・英語名・図鑑番号で検索できます
+          {!indexReady && <span className="inline-block w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />}
+        </p>
 
         {loading && (
           <div className="flex justify-center py-12">
