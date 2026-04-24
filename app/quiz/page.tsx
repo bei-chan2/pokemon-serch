@@ -133,7 +133,6 @@ function StatBar({ stat }: { stat: Stat }) {
   );
 }
 
-// Detail panel for one Pokemon (with lazy ja name loading)
 function PokemonDetail({
   pokemon,
   jaCache,
@@ -159,7 +158,6 @@ function PokemonDetail({
 
   return (
     <div className="space-y-4">
-      {/* Image + Name */}
       <div className="flex items-center gap-3">
         <Image
           src={pokemon.imageUrl}
@@ -184,14 +182,12 @@ function PokemonDetail({
         </div>
       </div>
 
-      {/* Flavor text */}
       {pokemon.flavorText && (
         <p className="text-gray-300 text-sm leading-relaxed bg-gray-700/50 rounded-xl p-3">
           {pokemon.flavorText}
         </p>
       )}
 
-      {/* Height / Weight */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-gray-700/50 rounded-xl p-3 text-center">
           <p className="text-gray-400 text-xs mb-0.5">高さ</p>
@@ -203,7 +199,6 @@ function PokemonDetail({
         </div>
       </div>
 
-      {/* Base Stats */}
       <div>
         <p className="text-gray-400 text-sm mb-2">基本ステータス</p>
         <div className="space-y-1.5">
@@ -212,7 +207,6 @@ function PokemonDetail({
         <p className="text-gray-500 text-xs text-right mt-1">合計: {totalStats}</p>
       </div>
 
-      {/* Abilities */}
       <div className="flex items-start gap-3">
         <span className="text-gray-400 text-sm w-16 shrink-0 pt-1">とくせい</span>
         <div className="flex flex-wrap gap-1.5">
@@ -224,7 +218,6 @@ function PokemonDetail({
         </div>
       </div>
 
-      {/* Moves */}
       <div className="flex items-start gap-3">
         <span className="text-gray-400 text-sm w-16 shrink-0 pt-1">おぼえるわざ</span>
         <div className="flex flex-wrap gap-1.5">
@@ -239,16 +232,111 @@ function PokemonDetail({
   );
 }
 
+function SearchModal({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState<PokemonData | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const jaCache = useRef<Map<number, { abilities: string[]; moves: string[] }>>(new Map());
+  const [, forceUpdate] = useState(0);
+
+  const handleJaLoaded = useCallback((id: number, abilities: string[], moves: string[]) => {
+    jaCache.current.set(id, { abilities, moves });
+    forceUpdate((n) => n + 1);
+  }, []);
+
+  const handleSearch = async () => {
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    jaCache.current.clear();
+    try {
+      const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${q}`);
+      if (!res.ok) throw new Error();
+      const poke = await res.json();
+      const data = await fetchPokemonData(poke.id);
+      setResult(data);
+    } catch {
+      setError('みつかりませんでした。番号か英語名で入力してください。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+      <div className="max-w-lg mx-auto p-4 pb-10">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5 pt-2">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors text-sm font-semibold"
+          >
+            ← もどる
+          </button>
+          <h2 className="text-xl font-bold text-yellow-400">ポケモンけんさく</h2>
+        </div>
+
+        {/* Search input */}
+        <div className="flex gap-2 mb-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="番号 or 英語名 (例: 25, pikachu)"
+            autoFocus
+            className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-400 transition-colors"
+          />
+          <button
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+            className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 text-gray-900 font-bold px-5 py-3 rounded-xl transition-colors active:scale-95"
+          >
+            けんさく
+          </button>
+        </div>
+        <p className="text-gray-500 text-xs mb-5 pl-1">英語名または図鑑番号で検索できます</p>
+
+        {loading && (
+          <div className="flex justify-center py-12">
+            <div className="w-10 h-10 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-500/20 border border-red-500/40 rounded-xl p-4 text-center">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+
+        {result && (
+          <div className="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+            <PokemonDetail
+              pokemon={result}
+              jaCache={jaCache.current}
+              onJaLoaded={handleJaLoaded}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type GameState = 'loading' | 'playing' | 'answered';
 
 export default function QuizPage() {
   const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
   const [gameState, setGameState] = useState<GameState>('loading');
   const [allPokemon, setAllPokemon] = useState<PokemonData[]>([]);
   const [correctId, setCorrectId] = useState<number>(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<number>(0);
-  // ja name cache: pokemonId → { abilities, moves }
+  const [searchOpen, setSearchOpen] = useState(false);
   const jaCache = useRef<Map<number, { abilities: string[]; moves: string[] }>>(new Map());
   const [, forceUpdate] = useState(0);
 
@@ -270,7 +358,6 @@ export default function QuizPage() {
 
     setCorrectId(cId);
     setAllPokemon(pokeList);
-    // default detail tab = correct Pokemon
     setActiveTab(pokeList.findIndex((p) => p.id === cId));
     setGameState('playing');
   }, []);
@@ -280,7 +367,12 @@ export default function QuizPage() {
   const handleAnswer = (choiceId: number) => {
     if (gameState !== 'playing') return;
     setSelectedId(choiceId);
-    if (choiceId === correctId) setScore((s) => s + 1);
+    if (choiceId === correctId) {
+      setScore((s) => s + 1);
+      setStreak((s) => s + 1);
+    } else {
+      setStreak(0);
+    }
     setActiveTab(allPokemon.findIndex((p) => p.id === correctId));
     setGameState('answered');
   };
@@ -299,134 +391,157 @@ export default function QuizPage() {
   const isCorrect = selectedId === correctId;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4 pb-10">
-      <div className="max-w-lg mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4 pt-2">
-          <h1 className="text-2xl font-bold text-yellow-400">ポケモンクイズ</h1>
-          <div className="bg-yellow-400 text-gray-900 px-4 py-1.5 rounded-full font-bold text-sm">
-            スコア: {score}
-          </div>
-        </div>
+    <>
+      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
 
-        {/* Pokemon images row (playing: show question mark, answered: show all) */}
-        {gameState === 'playing' && allPokemon.length > 0 && (
-          <div className="flex justify-center mb-4">
-            <div className="bg-gray-800 rounded-3xl p-4 w-40 h-40 sm:w-52 sm:h-52 flex items-center justify-center">
-              {(() => {
-                const url = allPokemon.find((p) => p.id === correctId)?.imageUrl;
-                return url ? (
-                  <Image
-                    src={url}
-                    alt="pokemon"
-                    width={208}
-                    height={208}
-                    className="object-contain"
-                    priority
-                  />
-                ) : null;
-              })()}
+      <div className="min-h-screen bg-gray-900 text-white p-4 pb-10">
+        <div className="max-w-lg mx-auto">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-4 pt-2">
+            <h1 className="text-2xl font-bold text-yellow-400">ポケモンクイズ</h1>
+            <div className="flex items-center gap-2">
+              {streak >= 2 && (
+                <div className="bg-orange-500 text-white px-3 py-1.5 rounded-full font-bold text-sm animate-pulse">
+                  🔥 {streak}連続
+                </div>
+              )}
+              <div className="bg-yellow-400 text-gray-900 px-4 py-1.5 rounded-full font-bold text-sm">
+                {score}点
+              </div>
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="bg-gray-700 hover:bg-gray-600 active:scale-95 text-white w-9 h-9 rounded-full flex items-center justify-center transition-colors text-base"
+                aria-label="ポケモンをけんさく"
+              >
+                🔍
+              </button>
             </div>
           </div>
-        )}
 
-        {gameState === 'playing' && (
-          <>
-            <p className="text-center text-lg font-semibold mb-4">このポケモンはだれ？</p>
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              {allPokemon.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleAnswer(p.id)}
-                  className="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-3 px-4 rounded-xl transition-all duration-200"
-                >
-                  {p.nameJa}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Result banner */}
-        {gameState === 'answered' && (
-          <>
-            {isCorrect ? (
-              <div className="bg-green-500/20 border border-green-500/40 rounded-2xl py-3 px-4 mb-4 text-center">
-                <p className="text-green-400 text-xl font-bold">✓ せいかい！</p>
+          {/* Pokemon image (playing) */}
+          {gameState === 'playing' && allPokemon.length > 0 && (
+            <div className="flex justify-center mb-4">
+              <div className="bg-gray-800 rounded-3xl p-4 w-40 h-40 sm:w-52 sm:h-52 flex items-center justify-center">
+                {(() => {
+                  const url = allPokemon.find((p) => p.id === correctId)?.imageUrl;
+                  return url ? (
+                    <Image
+                      src={url}
+                      alt="pokemon"
+                      width={208}
+                      height={208}
+                      className="object-contain"
+                      priority
+                    />
+                  ) : null;
+                })()}
               </div>
-            ) : (
-              <div className="bg-red-500/20 border border-red-500/40 rounded-2xl py-3 px-4 mb-4 text-center">
-                <p className="text-red-400 text-xl font-bold">✗ ざんねん！</p>
-                <p className="text-gray-300 text-sm mt-0.5">
-                  正解は{' '}
-                  <span className="text-yellow-400 font-bold">
-                    {allPokemon.find((p) => p.id === correctId)?.nameJa}
-                  </span>{' '}
-                  でした
-                </p>
-              </div>
-            )}
-
-            {/* Answer summary row */}
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {allPokemon.map((p) => {
-                const isCorrectPoke = p.id === correctId;
-                const isSelected = p.id === selectedId;
-                let cls = 'bg-gray-700 border-gray-600';
-                if (isCorrectPoke) cls = 'bg-green-600/30 border-green-500';
-                else if (isSelected) cls = 'bg-red-600/30 border-red-500';
-                return (
-                  <div key={p.id} className={`border rounded-xl px-3 py-2 flex items-center gap-2 ${cls}`}>
-                    <span className="text-lg">{isCorrectPoke ? '✓' : isSelected ? '✗' : '　'}</span>
-                    <span className="text-sm font-semibold">{p.nameJa}</span>
-                  </div>
-                );
-              })}
             </div>
+          )}
 
-            {/* Tabs */}
-            <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
-              {allPokemon.map((p, i) => {
-                const isCorrectPoke = p.id === correctId;
-                const isSelected = p.id === selectedId;
-                let tabCls = 'border-gray-600 text-gray-400 hover:text-white hover:border-gray-400';
-                if (activeTab === i) {
-                  if (isCorrectPoke) tabCls = 'border-green-400 text-green-300 bg-green-500/10';
-                  else if (isSelected) tabCls = 'border-red-400 text-red-300 bg-red-500/10';
-                  else tabCls = 'border-blue-400 text-blue-300 bg-blue-500/10';
-                }
-                return (
+          {gameState === 'playing' && (
+            <>
+              <p className="text-center text-lg font-semibold mb-4">このポケモンはだれ？</p>
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                {allPokemon.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setActiveTab(i)}
-                    className={`border-b-2 px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${tabCls}`}
+                    onClick={() => handleAnswer(p.id)}
+                    className="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold py-3 px-4 rounded-xl transition-all duration-200"
                   >
-                    {isCorrectPoke && '✓ '}{isSelected && !isCorrectPoke && '✗ '}{p.nameJa}
+                    {p.nameJa}
                   </button>
-                );
-              })}
-            </div>
-
-            {/* Detail panel */}
-            {allPokemon[activeTab] && (
-              <div className="bg-gray-800 rounded-2xl p-3 sm:p-5 mb-4 border border-gray-700">
-                <PokemonDetail
-                  pokemon={allPokemon[activeTab]}
-                  jaCache={jaCache.current}
-                  onJaLoaded={handleJaLoaded}
-                />
+                ))}
               </div>
-            )}
+            </>
+          )}
 
-            <button
-              onClick={loadQuestion}
-              className="w-full bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 font-bold py-3.5 rounded-xl transition-all duration-200 text-lg"
-            >
-              次の問題へ →
-            </button>
-          </>
-        )}
+          {/* Result banner */}
+          {gameState === 'answered' && (
+            <>
+              {isCorrect ? (
+                <div className="bg-green-500/20 border border-green-500/40 rounded-2xl py-3 px-4 mb-4 text-center">
+                  <p className="text-green-400 text-xl font-bold">
+                    {streak >= 3 ? `🔥 ${streak}連続せいかい！` : '✓ せいかい！'}
+                  </p>
+                  {streak === 2 && (
+                    <p className="text-orange-400 text-sm mt-0.5">2連続！この調子！</p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-red-500/20 border border-red-500/40 rounded-2xl py-3 px-4 mb-4 text-center">
+                  <p className="text-red-400 text-xl font-bold">✗ ざんねん！</p>
+                  <p className="text-gray-300 text-sm mt-0.5">
+                    正解は{' '}
+                    <span className="text-yellow-400 font-bold">
+                      {allPokemon.find((p) => p.id === correctId)?.nameJa}
+                    </span>{' '}
+                    でした
+                  </p>
+                </div>
+              )}
+
+              {/* Answer summary row */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {allPokemon.map((p) => {
+                  const isCorrectPoke = p.id === correctId;
+                  const isSelected = p.id === selectedId;
+                  let cls = 'bg-gray-700 border-gray-600';
+                  if (isCorrectPoke) cls = 'bg-green-600/30 border-green-500';
+                  else if (isSelected) cls = 'bg-red-600/30 border-red-500';
+                  return (
+                    <div key={p.id} className={`border rounded-xl px-3 py-2 flex items-center gap-2 ${cls}`}>
+                      <span className="text-lg">{isCorrectPoke ? '✓' : isSelected ? '✗' : '　'}</span>
+                      <span className="text-sm font-semibold">{p.nameJa}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Tabs */}
+              <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
+                {allPokemon.map((p, i) => {
+                  const isCorrectPoke = p.id === correctId;
+                  const isSelected = p.id === selectedId;
+                  let tabCls = 'border-gray-600 text-gray-400 hover:text-white hover:border-gray-400';
+                  if (activeTab === i) {
+                    if (isCorrectPoke) tabCls = 'border-green-400 text-green-300 bg-green-500/10';
+                    else if (isSelected) tabCls = 'border-red-400 text-red-300 bg-red-500/10';
+                    else tabCls = 'border-blue-400 text-blue-300 bg-blue-500/10';
+                  }
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setActiveTab(i)}
+                      className={`border-b-2 px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${tabCls}`}
+                    >
+                      {isCorrectPoke && '✓ '}{isSelected && !isCorrectPoke && '✗ '}{p.nameJa}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Detail panel */}
+              {allPokemon[activeTab] && (
+                <div className="bg-gray-800 rounded-2xl p-3 sm:p-5 mb-4 border border-gray-700">
+                  <PokemonDetail
+                    pokemon={allPokemon[activeTab]}
+                    jaCache={jaCache.current}
+                    onJaLoaded={handleJaLoaded}
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={loadQuestion}
+                className="w-full bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 font-bold py-3.5 rounded-xl transition-all duration-200 text-lg"
+              >
+                次の問題へ →
+              </button>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
