@@ -160,13 +160,13 @@ function PokemonDetail({
   return (
     <div className="space-y-4">
       {/* Image + Name */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <Image
           src={pokemon.imageUrl}
           alt={pokemon.nameJa}
-          width={80}
-          height={80}
-          className="object-contain shrink-0"
+          width={72}
+          height={72}
+          className="object-contain shrink-0 w-16 h-16 sm:w-20 sm:h-20"
         />
         <div>
           <p className="text-xl font-bold">{pokemon.nameJa}</p>
@@ -312,7 +312,7 @@ export default function QuizPage() {
         {/* Pokemon images row (playing: show question mark, answered: show all) */}
         {gameState === 'playing' && allPokemon.length > 0 && (
           <div className="flex justify-center mb-4">
-            <div className="bg-gray-800 rounded-3xl p-4 w-52 h-52 flex items-center justify-center">
+            <div className="bg-gray-800 rounded-3xl p-4 w-40 h-40 sm:w-52 sm:h-52 flex items-center justify-center">
               {(() => {
                 const url = allPokemon.find((p) => p.id === correctId)?.imageUrl;
                 return url ? (
@@ -409,7 +409,7 @@ export default function QuizPage() {
 
             {/* Detail panel */}
             {allPokemon[activeTab] && (
-              <div className="bg-gray-800 rounded-2xl p-5 mb-4 border border-gray-700">
+              <div className="bg-gray-800 rounded-2xl p-3 sm:p-5 mb-4 border border-gray-700">
                 <PokemonDetail
                   pokemon={allPokemon[activeTab]}
                   jaCache={jaCache.current}
