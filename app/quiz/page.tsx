@@ -383,17 +383,104 @@ function SearchModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+interface HistoryEntry {
+  correct: { id: number; nameJa: string; imageUrl: string };
+  selected: { nameJa: string } | null;
+  isCorrect: boolean;
+}
+
+function HistoryModal({ history, onClose }: { history: HistoryEntry[]; onClose: () => void }) {
+  const total = history.length;
+  const correct = history.filter((h) => h.isCorrect).length;
+  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+      <div className="max-w-lg mx-auto p-4 pb-10">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5 pt-2">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors text-sm font-semibold"
+          >
+            ← もどる
+          </button>
+          <h2 className="text-xl font-bold text-yellow-400">かいとう履歴</h2>
+        </div>
+
+        {total === 0 ? (
+          <p className="text-gray-500 text-center py-12">まだ回答がありません</p>
+        ) : (
+          <>
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              <div className="bg-gray-800 rounded-xl p-3 text-center border border-gray-700">
+                <p className="text-gray-400 text-xs mb-0.5">かいとう数</p>
+                <p className="text-2xl font-bold">{total}</p>
+              </div>
+              <div className="bg-green-900/40 rounded-xl p-3 text-center border border-green-700/50">
+                <p className="text-gray-400 text-xs mb-0.5">せいかい</p>
+                <p className="text-2xl font-bold text-green-400">{correct}</p>
+              </div>
+              <div className="bg-gray-800 rounded-xl p-3 text-center border border-gray-700">
+                <p className="text-gray-400 text-xs mb-0.5">せいかい率</p>
+                <p className="text-2xl font-bold text-yellow-400">{pct}%</p>
+              </div>
+            </div>
+
+            {/* Entry list (newest first) */}
+            <div className="space-y-2">
+              {[...history].reverse().map((entry, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 border ${
+                    entry.isCorrect
+                      ? 'bg-green-900/20 border-green-700/40'
+                      : 'bg-red-900/20 border-red-700/40'
+                  }`}
+                >
+                  <span className={`text-lg font-bold shrink-0 w-6 text-center ${entry.isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                    {entry.isCorrect ? '✓' : '✗'}
+                  </span>
+                  <Image
+                    src={entry.correct.imageUrl}
+                    alt={entry.correct.nameJa}
+                    width={40}
+                    height={40}
+                    className="object-contain shrink-0 w-9 h-9"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm">{entry.correct.nameJa}</p>
+                    {!entry.isCorrect && entry.selected && (
+                      <p className="text-red-400 text-xs mt-0.5">
+                        → {entry.selected.nameJa} と答えた
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-gray-600 text-xs shrink-0">#{total - i}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type GameState = 'loading' | 'playing' | 'answered';
 
 export default function QuizPage() {
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [gameState, setGameState] = useState<GameState>('loading');
   const [allPokemon, setAllPokemon] = useState<PokemonData[]>([]);
   const [correctId, setCorrectId] = useState<number>(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<number>(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const jaCache = useRef<Map<number, { abilities: string[]; moves: string[] }>>(new Map());
   const [, forceUpdate] = useState(0);
 
@@ -424,12 +511,23 @@ export default function QuizPage() {
   const handleAnswer = (choiceId: number) => {
     if (gameState !== 'playing') return;
     setSelectedId(choiceId);
-    if (choiceId === correctId) {
+    const correctPoke = allPokemon.find((p) => p.id === correctId)!;
+    const selectedPoke = allPokemon.find((p) => p.id === choiceId)!;
+    const isCorrect = choiceId === correctId;
+    if (isCorrect) {
       setScore((s) => s + 1);
       setStreak((s) => s + 1);
     } else {
       setStreak(0);
     }
+    setHistory((prev) => [
+      ...prev,
+      {
+        correct: { id: correctPoke.id, nameJa: correctPoke.nameJa, imageUrl: correctPoke.imageUrl },
+        selected: isCorrect ? null : { nameJa: selectedPoke.nameJa },
+        isCorrect,
+      },
+    ]);
     setActiveTab(allPokemon.findIndex((p) => p.id === correctId));
     setGameState('answered');
   };
@@ -450,6 +548,7 @@ export default function QuizPage() {
   return (
     <>
       {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
+      {historyOpen && <HistoryModal history={history} onClose={() => setHistoryOpen(false)} />}
 
       <div className="min-h-screen bg-gray-900 text-white p-4 pb-10">
         <div className="max-w-lg mx-auto">
@@ -465,6 +564,13 @@ export default function QuizPage() {
               <div className="bg-yellow-400 text-gray-900 px-4 py-1.5 rounded-full font-bold text-sm">
                 {score}点
               </div>
+              <button
+                onClick={() => setHistoryOpen(true)}
+                className="bg-gray-700 hover:bg-gray-600 active:scale-95 text-white w-9 h-9 rounded-full flex items-center justify-center transition-colors text-base"
+                aria-label="かいとう履歴"
+              >
+                📋
+              </button>
               <button
                 onClick={() => setSearchOpen(true)}
                 className="bg-gray-700 hover:bg-gray-600 active:scale-95 text-white w-9 h-9 rounded-full flex items-center justify-center transition-colors text-base"
